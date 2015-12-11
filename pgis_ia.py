@@ -103,8 +103,8 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
         # Michael Mack - 93421
 
         qstr = """
-        select first_name as first, last_name as last, postal_code as zip
-        from geog_897d.roster where postal_code like '93%'
+        SELECT first_name AS first, last_name AS last, postal_code AS zip
+        FROM geog_897d.roster WHERE postal_code LIKE '93%'
         """
         curs.execute(qstr)
         rows = curs.fetchall()
