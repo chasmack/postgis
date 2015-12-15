@@ -2,7 +2,7 @@ import psycopg2
 import psycopg2.extras
 
 DSN = 'dbname=postgis_scratch user=postgres host=localhost password=pg'
-DSN_Z400 = 'dbname=postgis_scratch user=postgres host=z400 password=pg'
+DSN_Z400 = 'dbname=postgis_scratch user=postgres host=z400 password=pg707'
 
 with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
     with conn.cursor() as curs:
