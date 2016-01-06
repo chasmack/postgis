@@ -1,6 +1,3 @@
-# Sample data
-data/usu04/
-
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
