@@ -1,7 +1,12 @@
+# USU OS Python Assignment 4a
+#
+# Print the pixel values for all three bands of aster.img at
+# the points contained in sites.shp.
 
 import gdal, ogr
 from gdalconst import *
 import time
+import utils
 
 ogr.UseExceptions()
 
@@ -29,6 +34,7 @@ qstr = """
     DROP TABLE IF EXISTS {schema}.{layer};
     CREATE TABLE {schema}.{layer} (
       gid serial NOT NULL,
+      site_id integer,
       cover character varying(48),
       geom geometry({geomtype}, {srid}),
       CONSTRAINT {layer}_pkey PRIMARY KEY (gid))
@@ -42,7 +48,7 @@ pgFeatureDefn = pgLayer.GetLayerDefn()
 
 for feat in sitesDS.GetLayer():
     pgFeature = ogr.Feature(pgFeatureDefn)
-    pgFeature.SetFID(feat.GetField('id'))
+    pgFeature.SetField('site_id', feat.GetField('id'))
     pgFeature.SetField('cover', feat.GetField('cover'))
     pgFeature.SetGeometry(feat.GetGeometryRef())
 
@@ -50,18 +56,6 @@ for feat in sitesDS.GetLayer():
 
 # Done with the shapefile.
 shpDriver = sitesDS = None
-
-# Calculate x/y pixel offset from a coordinate (x,y) and GeoTransform.
-def get_raster_offset(coord, geoxfm):
-    xoff = int((coord[0] - geoxfm[0]) / geoxfm[1])
-    yoff = int((coord[1] - geoxfm[3]) / geoxfm[5])
-    return xoff, yoff
-
-# Calculate x/y pixel coordinate from an offset (x,y) and GeoTransform.
-def get_raster_coord(offset, geoxfm):
-    x = offset[0] * geoxfm[1] + geoxfm[0]
-    y = offset[1] * geoxfm[5] + geoxfm[3]
-    return x, y
 
 # Register the raster driver and open the data source.
 rastDriver = gdal.GetDriverByName('HFA')
@@ -75,31 +69,46 @@ cols = ds.RasterXSize
 rows = ds.RasterYSize
 bands = ds.RasterCount
 
-print('\nrows x cols x bands: {0:d} x {1:d} x {2:d}'.format(rows, cols, bands))
+print('\nRaster file: ' + aster_rasterfile)
+print('Rows x Columns x Bands: {0:d} x {1:d} x {2:d}'.format(rows, cols, bands))
 
 geotransform = ds.GetGeoTransform()
 x0, dx, rx, y0, ry, dy = geotransform
 
-print('\ntop-left corner (x,y):  {0:12.4f}, {1:12.4f}'.format(x0, y0))
-print('pixel resolution (x,y): {0:12.4f}, {1:12.4f}'.format(dx, dy))
-print('axis rotation (x,y):    {0:12.4f}, {1:12.4f}'.format(rx, ry))
+print('\nTop-Left corner (x,y):  {0:12.4f}, {1:12.4f}'.format(x0, y0))
+print('Pixel resolution (x,y): {0:12.4f}, {1:12.4f}'.format(dx, dy))
+print('Axis rotation (x,y):    {0:12.4f}, {1:12.4f}'.format(rx, ry))
 
 # Read point coordinates (x,y) and cover from the sites geometry into a list.
 qstr = """
-SELECT cover, geom
-FROM {schema}.{layer} AS a
-ORDER BY cover, ST_Y(geom) DESC;
+
+SELECT site_id, cover, geom,
+  ST_AsBearing(ST_Azimuth(garden_city, geog)) AS bearing,
+  ST_Distance(garden_city, geog) / 1000 AS dist_km
+FROM {schema}.{layer},
+  LATERAL (
+    -- using geography to give true bearings
+    SELECT
+      ST_PointFromText('POINT(-111.393384 41.946642)', 4326)::Geography AS garden_city,
+      ST_Transform(geom, 4326)::Geography AS geog
+  ) AS a
+ORDER BY dist_km;
+
 """.format(schema=sites_schema, layer=sites_layername)
+
 pgLayer = pgDS.ExecuteSQL(qstr)
 
 sites = []
 for feat in pgLayer:
     coords = feat.GetGeometryRef().GetPoint_2D()
     sites.append({
-        'coords': coords,
-        'cover' : feat.GetField('cover'),
-        'offset': get_raster_offset(coords, geotransform),
-        'data' : [],
+        'site_id' : feat.GetField('site_id'),
+        'coords'  : coords,
+        'cover'   : feat.GetField('cover'),
+        'dist_km' : feat.GetField('dist_km'),
+        'bearing' : feat.GetField('bearing'),
+        'offset'  : utils.get_raster_offset(coords, geotransform),
+        'data'    : [],
     })
 pgDS.ReleaseResultSet(pgLayer)
 
@@ -108,9 +117,9 @@ startTime = time.time()
 READ_ENTIRE_BAND = False
 
 if READ_ENTIRE_BAND:
-    print('\nreading entire band ...\n')
+    print('\nReading entire band ...')
 else:
-    print('\nreading one pixel at a time ...\n')
+    print('\nReading one pixel at a time ...')
 
 for n in (1,2,3):
 
@@ -134,10 +143,21 @@ for n in (1,2,3):
 
     band = data = None
 
+
+print('\n<id>: <northing>, <easting>, <bearing> <distance>: <cover> = (<b1>, <b2>, <b3>).')
+print('\nCoordinates are UTM 12N Northing, Easting (meters).')
+print('Bearing and Distance are straight line from Garden City, UT.')
+print()
+
 for site in sites:
-    x, y = site['coords']
-    print('{0:.4f}, {1:.4f}:  {2:>6s} = ({3:2d}, {4:2d}, {5:2d})'.format(
-            x, y, site['cover'], *site['data']))
+
+    x, y=  site['coords']
+    fmt = '{0:2d}: {1:.4f}, {2:.4f}, {3:s} {4:5.2f} km:  {5:>6s} = ({6:2d}, {7:2d}, {8:2d})'
+
+    print(fmt.format(
+        site['site_id'], y, x, site['bearing'], site['dist_km'],
+        site['cover'], *site['data']
+    ))
 
 endTime = time.time()
 print('\ntime: {0:.3f} sec'.format(endTime - startTime))
