@@ -1,3 +1,26 @@
+# PSU Geography 897d project 4
+#
+# In GEOG 483 the first project had you finding the best locations for "Jen and Barry"
+# to open an ice cream business. We're going to revisit that scenario for this project.
+# Your task is to import the project shapefiles into a PostGIS schema and then write a
+# series of SQL statements that automate the site selection process. If you need a new
+# copy of the data you can download and unzip the Project 4 Data file. Here's a reminder
+# of Jen and Barry's original selection criteria:
+#
+#  Greater than 500 farms for milk production
+#  A labor pool of at least 25,000 individuals between the ages of 18 and 64 years
+#  A low crime index (less than or equal to 0.02)
+#  A population of less than 150 individuals per square mile
+#  Located near a university or college
+#  At least one recreation area within 10 miles
+#  Interstate within 20 miles
+#
+# Because the interstate and recreation area criteria are a bit difficult to evaluate,
+# I'm only going to require you to handle the other (county- and city-level) criteria.
+# Given these requirements you should end up with 9 candidate cities. You can attempt
+# to incorporate the interstate and recreation area criteria for extra credit. If you
+# do so correctly you will end up with 4 candidate cities.
+
 import psycopg2
 import psycopg2.extras
 
@@ -15,21 +38,21 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
             ci.university > 0 AS university,
             miles_to_recreation, miles_to_interstate
         FROM (
-                SELECT intco.gid AS county_gid, intci.gid AS city_gid,
-                    min (
-                        ST_Distance(ST_Transform(intci.geom, 2272), ST_Transform(rec.geom, 2272)) / 5280
-                    )::numeric(6,2) AS miles_to_recreation,
-                    min (
-                        ST_Distance(ST_Transform(intci.geom, 2272), ST_Transform(ist.geom, 2272)) / 5280
-                    )::numeric(6,2) AS miles_to_interstate
-                FROM geog_897d.v_jb_candidate_counties AS intco
-                    INNER JOIN geog_897d.cities AS intci ON ST_Contains(intco.geom, intci.geom),
-                    geog_897d.rec_areas AS rec,
-                    geog_897d.interstates AS ist
-                GROUP BY county_gid, city_gid
-            ) AS a
-            INNER JOIN geog_897d.cities AS ci ON ci.gid = city_gid
-            INNER JOIN geog_897d.counties AS co on co.gid = county_gid    
+          SELECT intco.gid AS county_gid, intci.gid AS city_gid,
+            min (
+              ST_Distance(ST_Transform(intci.geom, 2272), ST_Transform(rec.geom, 2272)) / 5280
+            )::numeric(6,2) AS miles_to_recreation,
+            min (
+              ST_Distance(ST_Transform(intci.geom, 2272), ST_Transform(ist.geom, 2272)) / 5280
+            )::numeric(6,2) AS miles_to_interstate
+          FROM geog_897d.v_jb_candidate_counties AS intco
+            INNER JOIN geog_897d.cities AS intci ON ST_Contains(intco.geom, intci.geom),
+            geog_897d.rec_areas AS rec,
+            geog_897d.interstates AS ist
+          GROUP BY county_gid, city_gid
+        ) AS a
+          INNER JOIN geog_897d.cities AS ci ON ci.gid = city_gid
+          INNER JOIN geog_897d.counties AS co on co.gid = county_gid
         WHERE ci.crime_inde <= 0.02
             AND ci.university > 0
             -- AND miles_to_recreation <= 10

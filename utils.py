@@ -13,9 +13,3 @@ def get_raster_coord(offset, geoxfm):
     y = offset[1] * geoxfm[5] + geoxfm[3]
     return x, y
 
-def GetBlockSize(band):
-    x = gdal.ptrcreate('int', 0, 2)
-    gdal.GDALGetBlockSize(band._o, x, gdal.ptradd(x, 1))
-    result = (gdal.ptrvalue(x, 0), gdal.ptrvalue(x, 1))
-    gdal.ptrfree(x)
-    return result
