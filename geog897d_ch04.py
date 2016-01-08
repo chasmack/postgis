@@ -45,14 +45,14 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
             min (
               ST_Distance(ST_Transform(intci.geom, 2272), ST_Transform(ist.geom, 2272)) / 5280
             )::numeric(6,2) AS miles_to_interstate
-          FROM geog_897d.v_jb_candidate_counties AS intco
-            INNER JOIN geog_897d.cities AS intci ON ST_Contains(intco.geom, intci.geom),
-            geog_897d.rec_areas AS rec,
-            geog_897d.interstates AS ist
+          FROM geog897d.v_jb_candidate_counties AS intco
+            INNER JOIN geog897d.cities AS intci ON ST_Contains(intco.geom, intci.geom),
+            geog897d.rec_areas AS rec,
+            geog897d.interstates AS ist
           GROUP BY county_gid, city_gid
         ) AS a
-          INNER JOIN geog_897d.cities AS ci ON ci.gid = city_gid
-          INNER JOIN geog_897d.counties AS co on co.gid = county_gid
+          INNER JOIN geog897d.cities AS ci ON ci.gid = city_gid
+          INNER JOIN geog897d.counties AS co on co.gid = county_gid
         WHERE ci.crime_inde <= 0.02
             AND ci.university > 0
             -- AND miles_to_recreation <= 10
@@ -72,7 +72,7 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
         # Query roster data from local database.
         qstr = """
         SELECT first_name, last_name, postal_code
-        FROM geog_897d.roster
+        FROM geog897d.roster
         """
         curs.execute(qstr)
         students = curs.fetchall()
@@ -127,7 +127,7 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
 
         qstr = """
         SELECT first_name AS first, last_name AS last, postal_code AS zip
-        FROM geog_897d.roster WHERE postal_code LIKE '93%'
+        FROM geog897d.roster WHERE postal_code LIKE '93%'
         """
         curs.execute(qstr)
         rows = curs.fetchall()
@@ -139,7 +139,7 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
             print(rec['first'] + ' ' + rec['last'] + ' - ' + rec['zip'])
 
         qstr = """
-        DELETE FROM geog_897d.roster WHERE postal_code LIKE '93%'
+        DELETE FROM geog897d.roster WHERE postal_code LIKE '93%'
         """
         curs.execute(qstr)
         
@@ -147,7 +147,7 @@ with psycopg2.connect(DSN) as conn, psycopg2.connect(DSN_Z400) as rconn:
         print('DELETE: ' + str(curs.rowcount) + ' rows effected.') 
         
         qstr = """
-        INSERT INTO geog_897d.roster (first_name, last_name, postal_code)
+        INSERT INTO geog897d.roster (first_name, last_name, postal_code)
         VALUES (%s, %s, %s)
         """
         curs.executemany(qstr, students)
