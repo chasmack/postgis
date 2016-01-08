@@ -26,42 +26,56 @@ $$ LANGUAGE plpython3u IMMUTABLE
 COMMENT ON FUNCTION ST_AsBearing(float, integer) IS
   'args: azimuth, ndigits - Return text representation of azimuth as a bearing in decimal degrees.';
 
-
--- Transform geometry with 4-parameter inverse similarity transform.
+-- Transform geometry with 4-parameter similarity transform.
 --
 -- Given a0, b0, a1 & b1 for the forward transform -
 --   x' = a1*x - b1*y + a0
 --   y' = b1*x + a1*y + b0
 --
--- In martix notation -
+-- In matrix notation -
 --   X = R*x + t
+--
+-- The rotate/scale (r,k) matrix R -
+--   k = sqrt(a1^2 + b1^2)
+--   r = acos(a1/k) = asin(b1/k)
 --
 -- The inverse transform is -
 --   x = inv(R)*(X - t) = inv(R)*X + (-1)*inv(R)*t
 
-DROP FUNCTION IF EXISTS ST_SimilarityInverse(geometry,
-  double precision, double precision, double precision, double precision);
+DROP FUNCTION IF EXISTS ST_Similarity(geometry,  float, float, float, float);
 
-CREATE OR REPLACE FUNCTION ST_SimilarityInverse(
-  geom geometry,
-  a0 double precision, b0 double precision,
-  a1 double precision, b1 double precision)
+CREATE OR REPLACE FUNCTION ST_Similarity(
+  geom geometry, a0 float, b0 float, a1 float, b1 float)
 RETURNS geometry AS
 $$
-SELECT ST_Affine(geom, inv_a1, -inv_b1, inv_b1, inv_a1, inv_a0, inv_b0)
-FROM (
-  SELECT 1.0/(a1^2 + b1^2) AS inv_det
-) AS a,
-LATERAL (
-  SELECT
-    -inv_det * ( a0*a1 + b0*b1) AS inv_a0,
-    -inv_det * (-a0*b1 + a1*b0) AS inv_b0,
-     inv_det *  a1 AS inv_a1,
-     inv_det * -b1 AS inv_b1
-) AS b
+SELECT ST_Affine(geom, a1, -b1, b1, a1, a0, b0)
 $$ LANGUAGE sql IMMUTABLE
 ;
 
 COMMENT ON FUNCTION ST_Similarity(geometry, float, float, float, float) IS
-  'args: geom, a0, b0, a1, b1 - Applies 2-d inverse similarity transform to uniformly scale, rotate and translate geometry.';
+  'args: geom, a0, b0, a1, b1 - Applies transform to uniformly scale, rotate and translate 2D geometry.';
+
+
+DROP FUNCTION IF EXISTS ST_InverseSimilarity(geometry,  float, float, float, float);
+
+CREATE OR REPLACE FUNCTION ST_InverseSimilarity(
+  geom geometry, a0 float, b0 float, a1 float, b1 float)
+RETURNS geometry AS
+$$
+SELECT ST_Affine(geom, ia1, -ib1, ib1, ia1, ia0, ib0)
+FROM (
+  SELECT 1.0/(a1^2 + b1^2) AS idet
+) AS a,
+LATERAL (
+  SELECT
+    -idet * ( a0*a1 + b0*b1) AS ia0,
+    -idet * (-a0*b1 + a1*b0) AS ib0,
+     idet *  a1 AS              ia1,
+     idet * -b1 AS              ib1
+) AS b
+$$ LANGUAGE sql IMMUTABLE
+;
+
+COMMENT ON FUNCTION ST_InverseSimilarity(geometry, float, float, float, float) IS
+  'args: geom, a0, b0, a1, b1 - Applies inverse transform to uniformly scale, rotate and translate 2D geometry.';
 
