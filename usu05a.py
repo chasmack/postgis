@@ -60,8 +60,10 @@ startTime = time.time()
 # Initialize an array for the data.
 data  = [None for n in range(src_bands + 1)]
 
-nonzeros = 0
+valid_count = 0
 ndvi_sum = 0.0
+
+no_valid = some_valid = all_valid = 0
 
 # Read all bands a block at a time.
 for yoff in range(0, rows, yblock):
@@ -69,31 +71,48 @@ for yoff in range(0, rows, yblock):
 
         xsize = min(cols - xoff, xblock)
         ysize = min(rows - yoff, yblock)
+        block_size  = xsize * ysize
 
-        for n in range(1, src_bands + 1):
+        # Read blocks from bands 2 & 3.
+        for n in (2,3):
             srcBand = srcDS.GetRasterBand(n)
             data[n] = srcBand.ReadAsArray(xoff, yoff, xsize, ysize).astype(DST_DATA_TYPE)
 
-        # One block from each band is loaded.
-        mask = np.equal(data[3]+data[2], 0)
+        nir = data[3]
+        red = data[2]
 
-        # Numerator: nir - red
-        a = ma.array(data[3]-data[2], mask=mask, dtype=DST_DATA_TYPE)
+        # NDVI denominator.
+        b = nir + red
 
-        # Denominator: nir + red
-        b = ma.array(data[3]+data[2], mask=mask, dtype=DST_DATA_TYPE)
+        # Mask for divide by zero.
+        mask = np.equal(b, 0)
+        masked = np.count_nonzero(mask)
+        unmasked = block_size - masked
 
-        # Normalized Difference Vegetation Index
-        ndvi = a/b
+        # Calculate ndvi = (nir - red) / (nir + red)
+        if unmasked == 0:
+            # No valid data in this block.
+            ndvi = np.full((ysize, xsize), NO_DATA_VALUE)
+            no_valid += 1
 
-        ndvi.set_fill_value(NO_DATA_VALUE)
-        dstBand.WriteArray(ndvi.filled(), xoff, yoff)
-
-        count = ndvi.count()
-        if count > 0:
-            nonzeros += count
+        elif masked > 0:
+            # Some valid data, use a masked array.
+            a = ma.array(nir-red, mask=mask, fill_value=NO_DATA_VALUE)
+            ndvi = a/b
+            valid_count += unmasked
             ndvi_sum += ndvi.sum()
+            ndvi = ndvi.filled()
+            some_valid += 1
 
+        else:
+            # All data in the block is valid.
+            a = nir-red
+            ndvi = a/b
+            valid_count += block_size
+            ndvi_sum += ndvi.sum()
+            all_valid += 1
+
+        dstBand.WriteArray(ndvi, xoff, yoff)
 
 srcBand = data = None
 
@@ -107,13 +126,15 @@ dstDS.SetProjection(projection)
 gdal.SetConfigOption('HFA_USE_RRD', 'YES')
 dstDS.BuildOverviews(overviewlist=[2, 4, 8, 16, 32, 64, 128])
 
-pixels = rows * cols
+pixel_count = rows * cols
 
-print('\nNonZeros/Pixels: {0:d}/{1:d}  ({2:.0f}%)'.format(
-    nonzeros, pixels, 100.0 * nonzeros / pixels
+print('\nValid blocks: NONE={0}  SOME={1}  ALL={2}'.format(no_valid, some_valid, all_valid))
+
+print('\nValid Pixels/Total Pixels: {0:,d}/{1:,d}  ({2:.0f}%)'.format(
+    valid_count, pixel_count, 100.0 * valid_count / pixel_count
 ))
 
-print('\nNDIV mean: {0:.2f}'.format(ndvi_sum / nonzeros))
+print('\nNDVI mean: {0:.3f}'.format(ndvi_sum / valid_count))
 
 endTime = time.time()
 print('\ntime: {0:.3f} sec'.format(endTime - startTime))
