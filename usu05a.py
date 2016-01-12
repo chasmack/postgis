@@ -10,21 +10,24 @@ import time
 
 gdal.UseExceptions()
 
-src_rasterfile = 'data/usu04/aster.img'
-dst_rasterfile = 'data/usu04/aster-ndvi.img'
+SRC_RASTERFILE = 'data/usu04/aster.img'
+DST_RASTERFILE = 'data/usu04/aster-ndvi.img'
+
+DST_DATA_TYPE = np.float32
+NO_DATA_VALUE = -99
 
 # Register the raster driver and open the source data.
 gdal.AllRegister()
-srcDS = gdal.Open(src_rasterfile, GA_ReadOnly)
+srcDS = gdal.Open(SRC_RASTERFILE, GA_ReadOnly)
 if srcDS is None:
-    print('Can''t open source raster file ' + src_rasterfile)
+    print('Can''t open source raster file ' + SRC_RASTERFILE)
     exit(1)
 
 cols = srcDS.RasterXSize
 rows = srcDS.RasterYSize
 src_bands = srcDS.RasterCount
 
-print('\nRaster file: ' + src_rasterfile)
+print('\nRaster file: ' + SRC_RASTERFILE)
 print('\nRows x Columns x Bands: {0:d} x {1:d} x {2:d}'.format(rows, cols, src_bands))
 
 projection = srcDS.GetProjection()
@@ -46,9 +49,9 @@ for n in range(1, src_bands + 1):
 
 # Open the output raster file.
 driver = srcDS.GetDriver()
-dstDS = driver.Create(dst_rasterfile, cols, rows, 1, GDT_Float32)
+dstDS = driver.Create(DST_RASTERFILE, cols, rows, 1, GDT_Float32)
 if dstDS is None:
-    print('Can''t open destination raster file ' + dst_rasterfile)
+    print('Can''t open destination raster file ' + DST_RASTERFILE)
     exit(1)
 dstBand = dstDS.GetRasterBand(1)
 
@@ -69,31 +72,33 @@ for yoff in range(0, rows, yblock):
 
         for n in range(1, src_bands + 1):
             srcBand = srcDS.GetRasterBand(n)
-            data[n] = srcBand.ReadAsArray(xoff, yoff, xsize, ysize)
+            data[n] = srcBand.ReadAsArray(xoff, yoff, xsize, ysize).astype(DST_DATA_TYPE)
 
         # One block from each band is loaded.
+        mask = np.equal(data[3]+data[2], 0)
 
-        # mask = np.greater(data[2]+data[3], 0)
+        # Numerator: nir - red
+        a = ma.array(data[3]-data[2], mask=mask, dtype=DST_DATA_TYPE)
 
-        # nir = data[3].astype(np.float32)
-        # red = data[2].astype(np.float32)
+        # Denominator: nir + red
+        b = ma.array(data[3]+data[2], mask=mask, dtype=DST_DATA_TYPE)
 
-        a = (data[3]-data[2]).astype(np.float32)
-        b = ma.masked_equal(data[3]+data[2], 0).astype(np.float32)
-
+        # Normalized Difference Vegetation Index
         ndvi = a/b
-        dstBand.WriteArray(ndvi, xoff, yoff)
 
-        # nir = data[3][mask].astype(np.float32)
-        # red = data[2][mask].astype(np.float32)
+        ndvi.set_fill_value(NO_DATA_VALUE)
+        dstBand.WriteArray(ndvi.filled(), xoff, yoff)
 
-        # nonzeros += mask.sum()
-        # ndvi_sum += ((nir-red) / (nir+red)).sum()
+        count = ndvi.count()
+        if count > 0:
+            nonzeros += count
+            ndvi_sum += ndvi.sum()
+
 
 srcBand = data = None
 
 # Finish up with the output raster.
-dstBand.SetNoDataValue(-99)
+dstBand.SetNoDataValue(NO_DATA_VALUE)
 dstBand.FlushCache()
 dstBand.GetStatistics(0, 1)
 
@@ -108,7 +113,7 @@ print('\nNonZeros/Pixels: {0:d}/{1:d}  ({2:.0f}%)'.format(
     nonzeros, pixels, 100.0 * nonzeros / pixels
 ))
 
-# print('\nNDIV mean: {0:.2f}'.format(ndvi_sum / nonzeros))
+print('\nNDIV mean: {0:.2f}'.format(ndvi_sum / nonzeros))
 
 endTime = time.time()
 print('\ntime: {0:.3f} sec'.format(endTime - startTime))

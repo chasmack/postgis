@@ -13,7 +13,7 @@ ogr.UseExceptions()
 aster_rasterfile = 'data/usu04/aster.img'
 
 sites_shapefile  = 'data/usu04/sites.shp'
-sites_schema = 'usu04'
+sites_schema = 'usu'
 sites_layername = 'sites'
 sites_srid = 32612
 
